@@ -10,8 +10,9 @@ import streamlit as st
 from gtts import gTTS
 
 # Constants for API
-API_KEY = 'your_api_key'  # Replace with your API key
-ENDPOINT = 'your_endpoint_url'  # Replace with your endpoint URL
+API_KEY = "22ec84421ec24230a3638d1b51e3a7dc"  
+ENDPOINT = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"
+
 
 def extract_audio_from_video(video_path, output_audio_folder="output", output_audio_filename="audio.mp3"):
     """Extract audio from the video file."""
