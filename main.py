@@ -192,7 +192,6 @@ def main():
                         status_label.text("Attaching adjusted audio to video...")
                         final_video_path = attach_audio_to_video(video_path, generated_audio_path)
                         progress.progress(100)
-
                         if final_video_path:
                             st.success("Processing complete!")
 
