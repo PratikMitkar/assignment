@@ -39,7 +39,7 @@ def extract_audio_from_video(video_path, output_audio_filename="audio.mp3"):
 # Step 2: Transcribe audio with Whisper
 def transcribe_audio(audio_file_path):
     try:
-        model = whisper.load_model("tiny")
+        model = whisper.load_model("tiny", device="cpu")
         result = model.transcribe(audio_file_path)
         transcription = result['text'].strip()
 
