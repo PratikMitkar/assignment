@@ -90,6 +90,10 @@ def generate_adjusted_audio(corrected_transcription, spoken_duration, target_wpm
 # Streamlit application
 st.title("Video to Adjusted Audio Converter")
 
+# Initialize paths
+video_path = None
+audio_path = None
+
 # File uploader for video
 uploaded_file = st.file_uploader("Upload a Video File", type=["mp4"])
 if uploaded_file:
@@ -121,8 +125,8 @@ if uploaded_file:
             # Display the generated audio
             st.audio(generated_audio_path)
 
-# Clean up temporary files
-if os.path.exists(video_path):
+# Clean up temporary files only if they were defined
+if video_path and os.path.exists(video_path):
     os.remove(video_path)
-if os.path.exists(audio_path):
+if audio_path and os.path.exists(audio_path):
     os.remove(audio_path)
