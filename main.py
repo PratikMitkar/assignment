@@ -5,10 +5,10 @@ import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
 from gtts import gTTS
+import pyttsx3
 import streamlit as st
 import re
 import time
-from TTS.api import TTS  # Import Coqui TTS
 
 # API configurations (replace with your own API key)
 api_key = "22ec84421ec24230a3638d1b51e3a7dc"
@@ -95,15 +95,18 @@ def correct_transcription_with_gpt4(transcription_file, output_folder=base_outpu
         print(f"Error in GPT-4 correction: {e}")
         return None
 
-# Step 4: Generate adjusted audio with Coqui TTS
-def generate_adjusted_audio_with_coqui(corrected_transcription_file, output_folder=base_output_folder):
+# Step 4: Generate adjusted audio
+def generate_adjusted_audio(corrected_transcription_file, speech_rate=1.0, output_folder=base_output_folder):
     try:
-        tts = TTS(model_name="tts_models/en/multi-dataset/tortoise-v2", progress_bar=True)
+        engine = pyttsx3.init()
+        engine.setProperty("rate", int(170 * speech_rate))
+
         with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
             text = f.read()
 
         output_audio_path = os.path.join(output_folder, "generated_audio.wav")
-        tts.tts_to_file(text=text, file_path=output_audio_path)
+        engine.save_to_file(text, output_audio_path)
+        engine.runAndWait()
         return output_audio_path
     except Exception as e:
         print(f"Error generating adjusted audio: {e}")
@@ -180,8 +183,8 @@ def main():
 
                 if corrected_transcription_file:
                     # Step 4: Generate adjusted audio
-                    status_label.text("Generating adjusted audio with Coqui TTS...")
-                    generated_audio_path = generate_adjusted_audio_with_coqui(corrected_transcription_file)
+                    status_label.text("Generating adjusted audio...")
+                    generated_audio_path = generate_adjusted_audio(corrected_transcription_file)
                     progress.progress(80)
 
                     if generated_audio_path:
