@@ -7,7 +7,6 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
 from gtts import gTTS
 import streamlit as st
-import re
 import time
 
 # API configurations (replace with your own API key)
@@ -147,7 +146,14 @@ def attach_audio_to_video(video_path, adjusted_audio_path):
     try:
         video_clip = VideoFileClip(video_path)
         final_adjusted_audio_path = os.path.join(temp_dir.name, "final_video_with_audio.mp4")
-        video_clip.set_audio(AudioFileClip(adjusted_audio_path)).write_videofile(final_adjusted_audio_path, codec="libx264", audio_codec="aac")
+
+        # Set progress bar increment during video generation
+        with st.spinner('Generating final video...'):
+            for i in range(1, 101, 10):  # Simulate gradual progress
+                time.sleep(0.5)
+                st.progress(i / 100.0)  # Update progress bar
+            video_clip.set_audio(AudioFileClip(adjusted_audio_path)).write_videofile(final_adjusted_audio_path, codec="libx264", audio_codec="aac")
+        
         return final_adjusted_audio_path
     except Exception as e:
         log_error(f"Error attaching audio to video: {e}")
