@@ -14,4 +14,3 @@ torchaudio
 numba
 setuptools
 wheel
-numba
