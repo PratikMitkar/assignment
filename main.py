@@ -1,28 +1,32 @@
 import os
+import whisper
 import requests
+import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
-from gtts import gTTS
 import streamlit as st
-import tempfile
-import whisper
+import time
 
-# API configurations (replace with your own API key)
-API_KEY = "22ec84421ec24230a3638d1b51e3a7dc"
-ENDPOINT = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"
+# API configurations
+api_key = "22ec84421ec24230a3638d1b51e3a7dc"
+endpoint = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"
 
 # Streamlit app title
 st.title("Video to Adjusted Audio Sync with Silence Handling")
 
+# Define a base output folder path
+base_output_folder = "output"
+os.makedirs(base_output_folder, exist_ok=True)
+
 # Function to log errors
 def log_error(message):
-    st.error(message)  # Log errors in the Streamlit app
+    st.error(message)
 
 # Step 1: Extract audio from the video
 def extract_audio_from_video(video_path):
     try:
         video = VideoFileClip(video_path)
-        audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+        audio_path = os.path.join(base_output_folder, "audio.mp3")
         video.audio.write_audiofile(audio_path)
         video.close()
         return audio_path
@@ -35,19 +39,29 @@ def transcribe_audio(audio_file_path):
     try:
         model = whisper.load_model("base")
         result = model.transcribe(audio_file_path)
-        return result['text'].strip()
+        transcription = result['text'].strip()
+        
+        # Save the transcription to a text file
+        transcription_file = os.path.join(base_output_folder, 'transcription.txt')
+        with open(transcription_file, 'w', encoding='utf-8') as f:
+            f.write(transcription)
+        return transcription_file
     except Exception as e:
         log_error(f"Error transcribing audio: {e}")
         return None
 
 # Step 3: Correct transcription with GPT-4
-def correct_transcription_with_gpt4(transcription):
+def correct_transcription_with_gpt4(transcription_file):
     try:
-        prompt = ("Correct the following text for punctuation, spelling, and grammar without changing its meaning:\n\n" + transcription)
+        with open(transcription_file, 'r', encoding='utf-8') as file:
+            file_content = file.read()
+
+        prompt = ("Correct the following text for punctuation, spelling, and grammar without changing its meaning:"
+                  f"\n\n{file_content}")
 
         headers = {
             "Content-Type": "application/json",
-            "api-key": API_KEY,
+            "api-key": api_key,
         }
 
         data = {
@@ -59,18 +73,20 @@ def correct_transcription_with_gpt4(transcription):
             "temperature": 0.7,
         }
 
-        response = requests.post(ENDPOINT, headers=headers, json=data)
-        if response.status_code == 200:
-            response_data = response.json()
-            return response_data['choices'][0]['message']['content'].strip()
-        else:
-            log_error(f"API Error: {response.status_code} - {response.text}")
-            return None
+        response = requests.post(endpoint, headers=headers, json=data)
+        response_data = response.json()
+        gpt4_response = response_data['choices'][0]['message']['content'].strip()
+
+        corrected_file_path = os.path.join(base_output_folder, 'transcription_corrected.txt')
+        with open(corrected_file_path, 'w', encoding='utf-8') as output_file:
+            output_file.write(gpt4_response)
+
+        return corrected_file_path
     except Exception as e:
-        log_error(f"Error correcting transcription: {e}")
+        log_error(f"Error in GPT-4 correction: {e}")
         return None
 
-# Step 4: Detect silences in the original audio
+# Detect silences in the original audio
 def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
     try:
         audio = AudioSegment.from_mp3(audio_path)
@@ -78,51 +94,53 @@ def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
         return [(start, stop) for start, stop in silence_segments]
     except Exception as e:
         log_error(f"Error detecting silences: {e}")
-        return None
+        return []
 
-# Step 5: Generate adjusted audio and incorporate silences
-def generate_adjusted_audio_with_silences(corrected_transcription, original_audio_path):
+# Step 4: Generate adjusted audio and incorporate silences
+def generate_adjusted_audio_with_silences(corrected_transcription_file, original_audio_path):
     try:
-        # Generate TTS audio
-        tts = gTTS(corrected_transcription, lang='en')
-        tts_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-        tts.save(tts_audio_path)
+        with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
+            text = f.read()
+
+        # Use gTTS for generating audio from text
+        from gtts import gTTS
+
+        tts = gTTS(text, lang='en')
+        tts_output_path = os.path.join(base_output_folder, "generated_audio.mp3")
+        tts.save(tts_output_path)
 
         # Detect silences from the original audio
         silence_segments = detect_silences(original_audio_path)
 
         if silence_segments:
-            tts_audio = AudioSegment.from_mp3(tts_audio_path)
+            generated_audio = AudioSegment.from_mp3(tts_output_path)
 
             # Insert silences into the generated audio
             for start, stop in silence_segments:
                 silence_duration = stop - start
                 silent_segment = AudioSegment.silent(duration=silence_duration)
-                tts_audio = tts_audio[:start] + silent_segment + tts_audio[start:]
+                generated_audio = generated_audio[:start] + silent_segment + generated_audio[start:]
 
-            final_output_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-            tts_audio.export(final_output_audio_path, format="mp3")
+            # Save the final adjusted audio with silences
+            final_output_audio_path = os.path.join(base_output_folder, "adjusted_audio_with_silences.mp3")
+            generated_audio.export(final_output_audio_path, format="mp3")
             return final_output_audio_path
         else:
-            return tts_audio_path
-
+            return tts_output_path
     except Exception as e:
         log_error(f"Error generating adjusted audio with silences: {e}")
         return None
 
-# Step 6: Attach adjusted audio to video
+# Step 5: Attach adjusted audio to the video
 def attach_audio_to_video(video_path, adjusted_audio_path):
     try:
         video_clip = VideoFileClip(video_path)
-        audio_clip = AudioFileClip(adjusted_audio_path)  # Use AudioFileClip instead of AudioSegment
-
-        final_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+        audio_clip = AudioFileClip(adjusted_audio_path)
+        
         final_video = video_clip.set_audio(audio_clip)
+        final_video_path = os.path.join(base_output_folder, "final_video_with_audio.mp4")
         final_video.write_videofile(final_video_path, codec="libx264", audio_codec="aac")
 
-        video_clip.close()  # Close the video clip
-        audio_clip.close()  # Close the audio clip
-        final_video.close()  # Close the final video clip
         return final_video_path
     except Exception as e:
         log_error(f"Error attaching audio to video: {e}")
@@ -133,42 +151,44 @@ def main():
     video_file = st.file_uploader("Upload a video", type=["mp4", "mkv", "avi"])
 
     if st.button("Process Video") and video_file is not None:
-        video_path = tempfile.NamedTemporaryFile(delete=False).name
+        progress = st.progress(0)
+        status_label = st.empty()  # Create an empty placeholder for status label
+
+        video_path = os.path.join(base_output_folder, video_file.name)
         with open(video_path, "wb") as f:
             f.write(video_file.read())
 
         # Step 1: Extract audio
+        status_label.text("Extracting audio from video...")
         output_audio_path = extract_audio_from_video(video_path)
+        progress.progress(20)
 
         if output_audio_path:
             # Step 2: Transcribe audio
-            transcription = transcribe_audio(output_audio_path)
+            status_label.text("Transcribing audio...")
+            transcription_file = transcribe_audio(output_audio_path)
+            progress.progress(40)
 
-            if transcription:
+            if transcription_file:
                 # Step 3: Correct transcription
-                corrected_transcription = correct_transcription_with_gpt4(transcription)
+                status_label.text("Correcting transcription with GPT-4...")
+                corrected_transcription_file = correct_transcription_with_gpt4(transcription_file)
+                progress.progress(60)
 
-                if corrected_transcription:
+                if corrected_transcription_file:
                     # Step 4: Generate adjusted audio with silences
-                    adjusted_audio_path = generate_adjusted_audio_with_silences(corrected_transcription, output_audio_path)
+                    status_label.text("Generating adjusted audio with silences...")
+                    generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path)
+                    progress.progress(80)
 
-                    if adjusted_audio_path:
+                    if generated_audio_path:
                         # Step 5: Sync audio and attach to video
-                        final_video_path = attach_audio_to_video(video_path, adjusted_audio_path)
+                        status_label.text("Attaching adjusted audio to video...")
+                        final_video_path = attach_audio_to_video(video_path, generated_audio_path)
 
                         if final_video_path:
                             st.success("Video processing complete!")
                             st.video(final_video_path)
-                        else:
-                            log_error("Failed to attach audio to video.")
-                    else:
-                        log_error("Failed to generate adjusted audio.")
-                else:
-                    log_error("Failed to correct transcription.")
-            else:
-                log_error("Failed to transcribe audio.")
-        else:
-            log_error("Failed to extract audio from video.")
 
 if __name__ == "__main__":
     main()
