@@ -5,11 +5,10 @@ import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
 from gtts import gTTS
-import pyttsx3
 import streamlit as st
 import re
 import time
-from tempfile import NamedTemporaryFile
+from TTS.api import TTS  # Import Coqui TTS
 
 # API configurations (replace with your own API key)
 api_key = "22ec84421ec24230a3638d1b51e3a7dc"
@@ -18,90 +17,134 @@ endpoint = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/
 # Streamlit app title
 st.title("Video to Adjusted Audio Sync")
 
-# Cache Whisper model loading to prevent reloading it each time
-@st.cache_resource
-def load_whisper_model():
-    return whisper.load_model("base")
+# Define a base output folder path
+base_output_folder = "output"
+os.makedirs(base_output_folder, exist_ok=True)
 
-# Extract audio from the video and handle temporary files
-def extract_audio_from_video(video_path):
+# Step 1: Extract audio from the video
+def extract_audio_from_video(video_path, output_audio_folder=base_output_folder, output_audio_filename="audio.mp3"):
     try:
+        output_audio_path = os.path.join(output_audio_folder, output_audio_filename)
         video = VideoFileClip(video_path)
         audio = video.audio
-        
-        # Use a temporary file for audio
-        with NamedTemporaryFile(suffix=".mp3", delete=False) as temp_audio:
-            audio.write_audiofile(temp_audio.name)
-            video.close()
-            return temp_audio.name
+        audio.write_audiofile(output_audio_path)
+        video.close()
+        return output_audio_path
     except Exception as e:
         print(f"Error extracting audio: {e}")
         return None
 
-# Transcribe audio with Whisper
-@st.cache_data
-def transcribe_audio(audio_file_path):
+# Step 2: Transcribe audio with Whisper
+def transcribe_audio(audio_file_path, output_folder=base_output_folder):
     try:
-        model = load_whisper_model()
+        model = whisper.load_model("base")
         result = model.transcribe(audio_file_path)
-        return result['text'].strip()
+        transcription = result['text'].strip()
+
+        transcription_file = os.path.join(output_folder, 'transcription.txt')
+        with open(transcription_file, 'w', encoding='utf-8') as f:
+            f.write(transcription)
+        return transcription_file
     except Exception as e:
         print(f"Error transcribing audio: {e}")
         return None
 
-# Correct transcription with GPT-4
-async def correct_transcription_with_gpt4(transcription):
-    prompt = ("Correct the following text for punctuation, spelling, and grammar without changing its meaning:"
-              "\n\n" + transcription)
-
-    headers = {
-        "Content-Type": "application/json",
-        "api-key": api_key,
-    }
-
-    data = {
-        "messages": [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 2048,
-        "temperature": 0.7,
-    }
-
+# Step 3: Correct transcription with GPT-4
+def correct_transcription_with_gpt4(transcription_file, output_folder=base_output_folder, max_retries=3):
     try:
-        response = requests.post(endpoint, headers=headers, json=data)
-        response_data = response.json()
-        return response_data['choices'][0]['message']['content'].strip() if response.status_code == 200 else None
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
+        with open(transcription_file, 'r', encoding='utf-8') as file:
+            file_content = file.read()
+
+        prompt = ("Correct the following text for punctuation, spelling, and grammar without changing its meaning:"
+                  "\n\n" + file_content)
+
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": api_key,
+        }
+
+        data = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            "max_tokens": 2048,
+            "temperature": 0.7,
+        }
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(endpoint, headers=headers, json=data)
+                if response.status_code == 200:
+                    response_data = response.json()
+                    gpt4_response = response_data['choices'][0]['message']['content'].strip()
+
+                    corrected_file_path = os.path.join(output_folder, 'transcription_corrected.txt')
+                    with open(corrected_file_path, 'w', encoding='utf-8') as output_file:
+                        output_file.write(gpt4_response)
+
+                    return corrected_file_path
+                else:
+                    print(f"API Error: {response.status_code} - {response.text}")
+            except requests.exceptions.RequestException as e:
+                print(f"Request failed: {e}. Retrying {attempt + 1}/{max_retries}...")
+                time.sleep(2)
+
+        return None
+    except Exception as e:
+        print(f"Error in GPT-4 correction: {e}")
         return None
 
-# Generate adjusted audio
-def generate_adjusted_audio(corrected_transcription):
+# Step 4: Generate adjusted audio with Coqui TTS
+def generate_adjusted_audio_with_coqui(corrected_transcription_file, output_folder=base_output_folder):
     try:
-        engine = pyttsx3.init()
-        engine.setProperty("rate", 170)
+        tts = TTS(model_name="tts_models/en/multi-dataset/tortoise-v2", progress_bar=True)
+        with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
+            text = f.read()
 
-        # Use a temporary file for generated audio
-        with NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
-            engine.save_to_file(corrected_transcription, temp_audio.name)
-            engine.runAndWait()
-            return temp_audio.name
+        output_audio_path = os.path.join(output_folder, "generated_audio.wav")
+        tts.tts_to_file(text=text, file_path=output_audio_path)
+        return output_audio_path
     except Exception as e:
         print(f"Error generating adjusted audio: {e}")
         return None
 
-# Attach audio to video
-def attach_audio_to_video(video_path, adjusted_audio_path):
+# Step 5: Adjust audio duration to sync with the video
+def adjust_audio_duration_with_speech_rate(audio_clip, video_duration):
+    audio_duration = len(audio_clip) / 1000  # Audio duration in seconds
+    duration_difference = video_duration - audio_duration
+
+    if abs(duration_difference) < 0.1:  # If the difference is minimal (e.g., < 100 ms), add silence
+        if duration_difference > 0:
+            silence_clip = AudioSegment.silent(duration=duration_difference * 1000)
+            audio_clip = audio_clip + silence_clip
+        elif duration_difference < 0:
+            audio_clip = audio_clip[:int(video_duration * 1000)]
+    else:
+        target_speed = audio_duration / video_duration
+        audio_clip = audio_clip.speedup(playback_speed=target_speed)
+
+    return audio_clip
+
+# Step 6: Attach adjusted audio to the video
+def attach_audio_to_video(video_path, adjusted_audio_path, output_folder=base_output_folder):
     try:
         video_clip = VideoFileClip(video_path)
         audio_clip = AudioFileClip(adjusted_audio_path)
 
-        # Use a temporary file for final video
-        with NamedTemporaryFile(suffix=".mp4", delete=False) as temp_video:
-            final_video = video_clip.set_audio(audio_clip)
-            final_video.write_videofile(temp_video.name, codec="libx264", audio_codec="aac")
-            return temp_video.name
+        adjusted_audio_clip = adjust_audio_duration_with_speech_rate(AudioSegment.from_wav(adjusted_audio_path),
+                                                                     video_clip.duration)
+
+        # Export adjusted audio
+        final_adjusted_audio_path = os.path.join(output_folder, "adjusted_audio.wav")
+        adjusted_audio_clip.export(final_adjusted_audio_path, format="wav")
+
+        # Attach the adjusted audio to the video
+        final_video = video_clip.set_audio(AudioFileClip(final_adjusted_audio_path))
+        final_video_path = os.path.join(output_folder, "final_video_with_audio.mp4")
+        final_video.write_videofile(final_video_path, codec="libx264", audio_codec="aac")
+
+        return final_video_path
     except Exception as e:
         print(f"Error attaching audio to video: {e}")
         return None
@@ -114,10 +157,9 @@ def main():
         progress = st.progress(0)
         status_label = st.empty()  # Create an empty placeholder for status label
 
-        # Save uploaded video to a temporary file
-        with NamedTemporaryFile(suffix=".mp4", delete=False) as temp_video:
-            temp_video.write(video_file.read())
-            video_path = temp_video.name
+        video_path = os.path.join(base_output_folder, video_file.name)
+        with open(video_path, "wb") as f:
+            f.write(video_file.read())
 
         # Step 1: Extract audio
         status_label.text("Extracting audio from video...")
@@ -127,30 +169,40 @@ def main():
         if output_audio_path:
             # Step 2: Transcribe audio
             status_label.text("Transcribing audio...")
-            transcription = transcribe_audio(output_audio_path)
+            transcription_file = transcribe_audio(output_audio_path)
             progress.progress(40)
 
-            if transcription:
-                # Step 3: Correct transcription with GPT-4
+            if transcription_file:
+                # Step 3: Correct transcription
                 status_label.text("Correcting transcription with GPT-4...")
-                corrected_transcription = correct_transcription_with_gpt4(transcription)
+                corrected_transcription_file = correct_transcription_with_gpt4(transcription_file)
                 progress.progress(60)
 
-                if corrected_transcription:
+                if corrected_transcription_file:
                     # Step 4: Generate adjusted audio
-                    status_label.text("Generating adjusted audio...")
-                    generated_audio_path = generate_adjusted_audio(corrected_transcription)
+                    status_label.text("Generating adjusted audio with Coqui TTS...")
+                    generated_audio_path = generate_adjusted_audio_with_coqui(corrected_transcription_file)
                     progress.progress(80)
 
                     if generated_audio_path:
-                        # Step 5: Attach adjusted audio to video
+                        # Step 5 & 6: Sync audio and attach to video
                         status_label.text("Attaching adjusted audio to video...")
                         final_video_path = attach_audio_to_video(video_path, generated_audio_path)
                         progress.progress(100)
 
                         if final_video_path:
                             st.success("Processing complete!")
-                            st.video(final_video_path)
+
+                            # Display original and final videos side by side
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.subheader("Original Video")
+                                st.video(video_path)
+                            with col2:
+                                st.subheader("Final Video with Adjusted Audio")
+                                st.video(final_video_path)
+
+                            status_label.text("Complete")
                         else:
                             st.error("Error generating final video with synced audio.")
                             status_label.text("Error during final video generation")
