@@ -1,8 +1,8 @@
-streamlit
+streamlit==1.39.0
+requests==2.32.3
+moviepy==1.0.3
+pydub==0.25.1
+gtts==2.5.3
 git+https://github.com/openai/whisper.git
-requests
-moviepy
-pydub
-gtts
-coqui-tts 
+coqui-tts==0.24.2
 TTS
