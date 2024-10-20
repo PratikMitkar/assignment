@@ -5,10 +5,10 @@ import json
 import tempfile
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
+from gtts import gTTS
 import streamlit as st
 import re
 import time
-from gtts import gTTS
 
 # API configurations (replace with your own API key)
 api_key = "22ec84421ec24230a3638d1b51e3a7dc"
@@ -108,16 +108,15 @@ def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
         log_error(f"Error detecting silences: {e}")
         return None
 
-# Step 5: Generate adjusted audio and incorporate silences using gTTS
+# Step 5: Generate adjusted audio and incorporate silences
 def generate_adjusted_audio_with_silences(corrected_transcription_file, original_audio_path, speech_rate=1.0):
     try:
-        # Read the corrected transcription text
         with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        # Generate TTS audio using gTTS
+        # Generate TTS audio
+        tts = gTTS(text)
         output_audio_path = os.path.join(temp_dir.name, "generated_audio.wav")
-        tts = gTTS(text=text, lang="en", slow=False)
         tts.save(output_audio_path)
 
         # Detect silences from the original audio
@@ -157,30 +156,42 @@ def attach_audio_to_video(video_path, adjusted_audio_path):
 # Main Streamlit logic
 def main():
     video_file = st.file_uploader("Upload a video", type=["mp4", "mkv", "avi"])
-
+    
     if st.button("Process Video") and video_file is not None:
+        progress_bar = st.progress(0)
+
         video_path = os.path.join(temp_dir.name, video_file.name)
         with open(video_path, "wb") as f:
             f.write(video_file.read())
 
         # Step 1: Extract audio
-        output_audio_path = extract_audio_from_video(video_path)
+        with st.spinner('Extracting audio from the video...'):
+            output_audio_path = extract_audio_from_video(video_path)
+        progress_bar.progress(20)
 
         if output_audio_path:
             # Step 2: Transcribe audio
-            transcription_file = transcribe_audio(output_audio_path)
+            with st.spinner('Transcribing audio...'):
+                transcription_file = transcribe_audio(output_audio_path)
+            progress_bar.progress(40)
 
             if transcription_file:
                 # Step 4: Correct transcription
-                corrected_transcription_file = correct_transcription_with_gpt4(transcription_file)
+                with st.spinner('Correcting transcription with GPT-4...'):
+                    corrected_transcription_file = correct_transcription_with_gpt4(transcription_file)
+                progress_bar.progress(60)
 
                 if corrected_transcription_file:
                     # Step 5: Generate adjusted audio with silences
-                    generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path)
+                    with st.spinner('Generating adjusted audio with silences...'):
+                        generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path)
+                    progress_bar.progress(80)
 
                     if generated_audio_path:
                         # Step 6: Sync audio and attach to video
-                        final_video_path = attach_audio_to_video(video_path, generated_audio_path)
+                        with st.spinner('Syncing audio and attaching it to the video...'):
+                            final_video_path = attach_audio_to_video(video_path, generated_audio_path)
+                        progress_bar.progress(100)
 
                         if final_video_path:
                             st.success("Video processing complete!")
