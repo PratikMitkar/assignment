@@ -8,3 +8,5 @@ requests
 streamlit
 git+https://github.com/openai/whisper.git
 whisper
+opencv-python 
+pyttsx3
