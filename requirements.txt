@@ -9,4 +9,4 @@ streamlit-TTS
 openai
 python-dotenv
 pyttsx3
-montreal-forced-aligner
+torch
