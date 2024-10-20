@@ -3,12 +3,5 @@ requests==2.32.3
 moviepy==1.0.3
 pydub==0.25.1
 gtts==2.5.3
-git+https://github.com/openai/whisper.git
-<<<<<<< HEAD
-requests
-moviepy
-pydub
-=======
 coqui-tts==0.24.2
->>>>>>> b67f3cb2544a5d8fe947dbb099943f7f185c9e2c
 TTS
