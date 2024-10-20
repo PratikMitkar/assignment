@@ -3,5 +3,4 @@ git+https://github.com/openai/whisper.git
 requests
 moviepy
 pydub
-gtts
-pyttsx3
+TTS
