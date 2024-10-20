@@ -5,6 +5,7 @@ import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
 import streamlit as st
+from gtts import gTTS
 
 # API configurations
 api_key = "22ec84421ec24230a3638d1b51e3a7dc"
@@ -44,10 +45,10 @@ def transcribe_audio(audio_file_path):
         transcription_file = os.path.join(base_output_folder, 'transcription.txt')
         with open(transcription_file, 'w', encoding='utf-8') as f:
             f.write(transcription)
-        return transcription_file
+        return transcription_file, result['duration']  # Return duration as well
     except Exception as e:
         log_error(f"Error transcribing audio: {e}")
-        return None
+        return None, None
 
 # Step 3: Correct transcription with GPT-4
 def correct_transcription_with_gpt4(transcription_file):
@@ -96,15 +97,25 @@ def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
         return []
 
 # Step 4: Generate adjusted audio and incorporate silences
-def generate_adjusted_audio_with_silences(corrected_transcription_file, original_audio_path):
+def generate_adjusted_audio_with_silences(corrected_transcription_file, original_audio_path, original_duration):
     try:
         with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        # Use gTTS for generating audio from text
-        from gtts import gTTS
+        # Count words in the transcription
+        word_count = len(text.split())
+        
+        # Calculate words per second (WPS)
+        wps = word_count / original_duration if original_duration > 0 else 0
+        st.write(f"Words per second: {wps}")
 
-        tts = gTTS(text, lang='en')
+        # Calculate speech rate (words per minute) for gTTS
+        # Adjust this factor as necessary
+        speech_rate = 150 + (wps * 60)  # Adjusting based on WPS
+        st.write(f"Speech rate for gTTS: {speech_rate}")
+
+        # Use gTTS for generating audio from text
+        tts = gTTS(text, lang='en', slow=False)  # `slow` parameter is for speed
         tts_output_path = os.path.join(base_output_folder, "generated_audio.mp3")
         tts.save(tts_output_path)
 
@@ -165,7 +176,7 @@ def main():
         if output_audio_path:
             # Step 2: Transcribe audio
             status_label.text("Transcribing audio...")
-            transcription_file = transcribe_audio(output_audio_path)
+            transcription_file, original_duration = transcribe_audio(output_audio_path)
             progress.progress(40)
 
             if transcription_file:
@@ -177,7 +188,7 @@ def main():
                 if corrected_transcription_file:
                     # Step 4: Generate adjusted audio with silences
                     status_label.text("Generating adjusted audio with silences...")
-                    generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path)
+                    generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path, original_duration)
                     progress.progress(80)
 
                     if generated_audio_path:
