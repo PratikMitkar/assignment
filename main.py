@@ -1,7 +1,7 @@
 import os
 import requests
 import streamlit as st
-from moviepy.editor import VideoFileClip, AudioFileClip
+from moviepy.editor import VideoFileClip
 from pydub import AudioSegment, silence
 import whisper
 import pyttsx3
@@ -66,9 +66,9 @@ def correct_transcription_with_gpt4(transcription):
         return None
 
 # Function to generate adjusted audio
-def generate_adjusted_audio(corrected_transcription, spoken_duration, target_wpm):
+def generate_adjusted_audio(corrected_transcription):
     engine = pyttsx3.init()
-    engine.setProperty("rate", 150)  # Adjust speech rate
+    engine.setProperty("rate", 170)  # Adjust speech rate
 
     # Split text into manageable chunks
     chunks = [corrected_transcription[i:i + 1000] for i in range(0, len(corrected_transcription), 1000)]
@@ -119,7 +119,7 @@ if uploaded_file:
             st.success("Transcription corrected successfully!")
 
             # Generate adjusted audio
-            generated_audio_path = generate_adjusted_audio(corrected_transcription, spoken_duration, target_wpm=170)
+            generated_audio_path = generate_adjusted_audio(corrected_transcription)
             st.success("Adjusted audio generated successfully!")
 
             # Display the generated audio
