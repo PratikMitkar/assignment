@@ -4,8 +4,8 @@ import requests
 import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
-import streamlit as st
 from gtts import gTTS
+import streamlit as st
 
 # API configurations
 api_key = "22ec84421ec24230a3638d1b51e3a7dc"
@@ -37,32 +37,19 @@ def extract_audio_from_video(video_path):
 # Step 2: Transcribe audio with Whisper
 def transcribe_audio(audio_file_path):
     try:
-        # Load audio and get its duration
-        audio = AudioSegment.from_mp3(audio_file_path)
-        original_duration = len(audio) / 1000  # duration in seconds
-        
         model = whisper.load_model("base")
         result = model.transcribe(audio_file_path)
         transcription = result['text'].strip()
-        
-        # Save the transcription to a text file
-        transcription_file = os.path.join(base_output_folder, 'transcription.txt')
-        with open(transcription_file, 'w', encoding='utf-8') as f:
-            f.write(transcription)
-        
-        return transcription_file, original_duration  # Return transcription file and duration
+        return transcription
     except Exception as e:
         log_error(f"Error transcribing audio: {e}")
-        return None, None
+        return None
 
 # Step 3: Correct transcription with GPT-4
-def correct_transcription_with_gpt4(transcription_file):
+def correct_transcription_with_gpt4(transcription):
     try:
-        with open(transcription_file, 'r', encoding='utf-8') as file:
-            file_content = file.read()
-
         prompt = ("Correct the following text for punctuation, spelling, and grammar without changing its meaning:"
-                  f"\n\n{file_content}")
+                  f"\n\n{transcription}")
 
         headers = {
             "Content-Type": "application/json",
@@ -81,12 +68,7 @@ def correct_transcription_with_gpt4(transcription_file):
         response = requests.post(endpoint, headers=headers, json=data)
         response_data = response.json()
         gpt4_response = response_data['choices'][0]['message']['content'].strip()
-
-        corrected_file_path = os.path.join(base_output_folder, 'transcription_corrected.txt')
-        with open(corrected_file_path, 'w', encoding='utf-8') as output_file:
-            output_file.write(gpt4_response)
-
-        return corrected_file_path
+        return gpt4_response
     except Exception as e:
         log_error(f"Error in GPT-4 correction: {e}")
         return None
@@ -102,36 +84,31 @@ def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
         return []
 
 # Step 4: Generate adjusted audio and incorporate silences
-def generate_adjusted_audio_with_silences(corrected_transcription_file, original_audio_path, original_duration):
+def generate_adjusted_audio_with_silences(corrected_transcription, original_audio_path):
     try:
-        with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
-            text = f.read()
-
         # Use gTTS for generating audio from text
-        tts = gTTS(text, lang='en')
+        tts = gTTS(corrected_transcription, lang='en')
         tts_output_path = os.path.join(base_output_folder, "generated_audio.mp3")
         tts.save(tts_output_path)
 
         # Detect silences from the original audio
         silence_segments = detect_silences(original_audio_path)
 
-        generated_audio = AudioSegment.from_mp3(tts_output_path)
+        if silence_segments:
+            generated_audio = AudioSegment.from_mp3(tts_output_path)
 
-        # Adjust playback speed based on original duration and text length
-        words_count = len(text.split())
-        playback_speed = original_duration / (words_count / 2.0)  # Adjust speed per your requirements
-        generated_audio = generated_audio.speedup(playback_speed)
+            # Insert silences into the generated audio
+            for start, stop in silence_segments:
+                silence_duration = stop - start
+                silent_segment = AudioSegment.silent(duration=silence_duration)
+                generated_audio = generated_audio[:start] + silent_segment + generated_audio[start:]
 
-        # Insert silences into the generated audio
-        for start, stop in silence_segments:
-            silence_duration = stop - start
-            silent_segment = AudioSegment.silent(duration=silence_duration)
-            generated_audio = generated_audio[:start] + silent_segment + generated_audio[start:]
-
-        # Save the final adjusted audio with silences
-        final_output_audio_path = os.path.join(base_output_folder, "adjusted_audio_with_silences.mp3")
-        generated_audio.export(final_output_audio_path, format="mp3")
-        return final_output_audio_path
+            # Save the final adjusted audio with silences
+            final_output_audio_path = os.path.join(base_output_folder, "adjusted_audio_with_silences.mp3")
+            generated_audio.export(final_output_audio_path, format="mp3")
+            return final_output_audio_path
+        else:
+            return tts_output_path
     except Exception as e:
         log_error(f"Error generating adjusted audio with silences: {e}")
         return None
@@ -171,19 +148,19 @@ def main():
         if output_audio_path:
             # Step 2: Transcribe audio
             status_label.text("Transcribing audio...")
-            transcription_file, original_duration = transcribe_audio(output_audio_path)
+            transcription = transcribe_audio(output_audio_path)
             progress.progress(40)
 
-            if transcription_file:
+            if transcription:
                 # Step 3: Correct transcription
                 status_label.text("Correcting transcription with GPT-4...")
-                corrected_transcription_file = correct_transcription_with_gpt4(transcription_file)
+                corrected_transcription = correct_transcription_with_gpt4(transcription)
                 progress.progress(60)
 
-                if corrected_transcription_file:
+                if corrected_transcription:
                     # Step 4: Generate adjusted audio with silences
                     status_label.text("Generating adjusted audio with silences...")
-                    generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path, original_duration)
+                    generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription, output_audio_path)
                     progress.progress(80)
 
                     if generated_audio_path:
