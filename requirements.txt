@@ -10,4 +10,4 @@ numpy
 llvmlite
 torch
 torchvision
-torchaudio==0.9.0
+torchaudio
