@@ -4,7 +4,7 @@ import requests
 import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
-import pyttsx3
+from gtts import gTTS
 import streamlit as st
 import re
 import time
@@ -22,7 +22,7 @@ os.makedirs(base_output_folder, exist_ok=True)
 
 # Function to log errors
 def log_error(message):
-    print(message)  # You can replace this with logging to a file or other logging mechanisms
+    st.error(message)  # Log error messages to the Streamlit app
 
 # Step 1: Extract audio from the video
 def extract_audio_from_video(video_path, output_audio_folder=base_output_folder, output_audio_filename="audio.mp3"):
@@ -88,9 +88,10 @@ def correct_transcription_with_gpt4(transcription_file, output_folder=base_outpu
 
                     return corrected_file_path
                 else:
-                    print(f"API Error: {response.status_code} - {response.text}")
+                    log_error(f"API Error: {response.status_code} - {response.text}")
+                    break
             except requests.exceptions.RequestException as e:
-                print(f"Request failed: {e}. Retrying {attempt + 1}/{max_retries}...")
+                log_error(f"Request failed: {e}. Retrying {attempt + 1}/{max_retries}...")
                 time.sleep(2)
 
         return None
@@ -111,22 +112,19 @@ def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
 # Step 5: Generate adjusted audio and incorporate silences
 def generate_adjusted_audio_with_silences(corrected_transcription_file, original_audio_path, speech_rate=1.0, output_folder=base_output_folder):
     try:
-        engine = pyttsx3.init()
-        engine.setProperty("rate", int(170 * speech_rate))
-
         with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        # Generate TTS audio
-        output_audio_path = os.path.join(output_folder, "generated_audio.wav")
-        engine.save_to_file(text, output_audio_path)
-        engine.runAndWait()
+        # Generate TTS audio using gTTS
+        tts = gTTS(text=text, lang='en', slow=False)
+        output_audio_path = os.path.join(output_folder, "generated_audio.mp3")
+        tts.save(output_audio_path)
 
         # Detect silences from the original audio
         silence_segments = detect_silences(original_audio_path)
 
         if silence_segments:
-            tts_audio = AudioSegment.from_wav(output_audio_path)
+            tts_audio = AudioSegment.from_mp3(output_audio_path)
 
             # Insert silences into the generated audio
             for start, stop in silence_segments:
@@ -135,8 +133,8 @@ def generate_adjusted_audio_with_silences(corrected_transcription_file, original
                 tts_audio = tts_audio[:start] + silent_segment + tts_audio[start:]
 
             # Save the final adjusted audio with silences
-            final_output_audio_path = os.path.join(output_folder, "adjusted_audio_with_silences.wav")
-            tts_audio.export(final_output_audio_path, format="wav")
+            final_output_audio_path = os.path.join(output_folder, "adjusted_audio_with_silences.mp3")
+            tts_audio.export(final_output_audio_path, format="mp3")
             return final_output_audio_path
         else:
             return output_audio_path
