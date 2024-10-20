@@ -9,3 +9,7 @@ gtts
 torch
 torchvision
 torchaudio
+streamlit
+moviepy
+torch
+torchvision
