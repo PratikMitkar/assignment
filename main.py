@@ -5,7 +5,6 @@ import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
 import streamlit as st
-from gtts import gTTS
 from tempfile import NamedTemporaryFile
 import time
 
