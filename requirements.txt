@@ -6,3 +6,4 @@ requests
 moviepy
 pydub
 pyttsx3
+gTTS
