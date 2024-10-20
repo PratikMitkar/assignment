@@ -1,0 +1,11 @@
+os-sys
+whisper
+requests
+jsonlib
+moviepy
+pydub
+gtts
+pyttsx3
+streamlit
+re
+time
