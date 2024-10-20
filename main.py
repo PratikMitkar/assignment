@@ -1,12 +1,11 @@
 import os
+import re
 import requests
 import whisper
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 from moviepy.editor import VideoFileClip
 import streamlit as st
-import time
-import threading
 
 # Streamlit Configuration
 st.title("Video to Adjusted Audio Converter")
@@ -16,7 +15,7 @@ st.write("Upload a video file to extract and adjust audio.")
 video_file = st.file_uploader("Choose a video file", type=["mp4"])
 
 # Configuration for API
-API_KEY = "22ec84421ec24230a3638d1b51e3a7dc"   # Replace with your actual API key
+API_KEY = "22ec84421ec24230a3638d1b51e3a7dc"  # Replace with your actual API key
 ENDPOINT = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"  # Replace with your actual endpoint
 
 # Function to extract audio from video
@@ -38,8 +37,8 @@ def extract_audio_from_video(video_path, output_audio_folder="output", output_au
 def process_audio_with_whisper(audio_file_path, output_folder="output"):
     try:
         audio = AudioSegment.from_mp3(audio_file_path)
-        silence_threshold = -50  # in dBFS
-        min_silence_duration = 500  # in milliseconds
+        silence_threshold = -50  # dBFS
+        min_silence_duration = 500  # milliseconds
         silence_intervals = detect_silence(audio, min_silence_len=min_silence_duration, silence_thresh=silence_threshold)
 
         total_duration_seconds = len(audio) / 1000
@@ -51,6 +50,7 @@ def process_audio_with_whisper(audio_file_path, output_folder="output"):
         spoken_minutes = spoken_duration_seconds / 60
         wpm = word_count / spoken_minutes if spoken_minutes > 0 else 0
 
+        # Save transcription and analysis results
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         transcription_file = os.path.join(output_folder, 'transcription.txt')
@@ -127,6 +127,7 @@ def generate_adjusted_audio(analysis_file, corrected_transcription_file, origina
         with open(analysis_file, 'r') as f:
             analysis_output = f.read()
 
+        # Extract required values from the analysis output
         word_count = int(re.search(r'Word count: (\d+)', analysis_output).group(1))
         spoken_duration = float(re.search(r'Spoken duration \(minutes\): ([\d.]+)', analysis_output).group(1))
         target_wpm = float(re.search(r'Words per minute \(WPM\): ([\d.]+)', analysis_output).group(1))
@@ -134,14 +135,15 @@ def generate_adjusted_audio(analysis_file, corrected_transcription_file, origina
         with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        speech_rate = target_wpm / 170
-        chunk_size = 1000
+        # Generate adjusted audio from corrected transcription
+        speech_rate = target_wpm / 170  # Adjust rate based on target WPM
+        chunk_size = 1000  # Number of characters per chunk
         chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
         combined_audio = AudioSegment.empty()
         for i, chunk in enumerate(chunks):
             try:
-                chunk_audio = AudioSegment.silent(duration=1000)  # Replace with TTS logic
+                chunk_audio = AudioSegment.silent(duration=1000)  # Replace with actual TTS logic
                 combined_audio += chunk_audio
             except Exception as e:
                 st.error(f"Error processing chunk {i}: {str(e)}")
@@ -185,4 +187,3 @@ def process_files(video_file):
 # Run the processing function on button click
 if st.button("Start Processing"):
     process_files(video_file)
-
