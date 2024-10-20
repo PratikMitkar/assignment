@@ -4,5 +4,4 @@ requests
 moviepy
 pydub
 gtts
-pyttsx3
 TTS
