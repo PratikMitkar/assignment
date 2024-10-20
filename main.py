@@ -1,6 +1,6 @@
 import os
 import requests
-from moviepy.editor import VideoFileClip
+from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
 from gtts import gTTS
 import streamlit as st
@@ -110,14 +110,19 @@ def generate_adjusted_audio_with_silences(corrected_transcription, original_audi
         log_error(f"Error generating adjusted audio with silences: {e}")
         return None
 
-# Step 6: Attach adjusted audio to the video
+# Step 6: Attach adjusted audio to video
 def attach_audio_to_video(video_path, adjusted_audio_path):
     try:
         video_clip = VideoFileClip(video_path)
-        audio_clip = AudioSegment.from_mp3(adjusted_audio_path)
+        audio_clip = AudioFileClip(adjusted_audio_path)  # Use AudioFileClip instead of AudioSegment
 
         final_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-        video_clip.set_audio(audio_clip).write_videofile(final_video_path, codec="libx264", audio_codec="aac")
+        final_video = video_clip.set_audio(audio_clip)
+        final_video.write_videofile(final_video_path, codec="libx264", audio_codec="aac")
+
+        video_clip.close()  # Close the video clip
+        audio_clip.close()  # Close the audio clip
+        final_video.close()  # Close the final video clip
         return final_video_path
     except Exception as e:
         log_error(f"Error attaching audio to video: {e}")
