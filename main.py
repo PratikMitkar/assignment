@@ -9,8 +9,8 @@ from gtts import gTTS
 import streamlit as st
 import time
 
-# Use Streamlit Secrets for the API key
-api_key = st.secrets.get("api_key", "22ec84421ec24230a3638d1b51e3a7dc")
+# Directly using the Azure API key and endpoint
+api_key = "22ec84421ec24230a3638d1b51e3a7dc"
 endpoint = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"
 
 # Streamlit app title
@@ -39,13 +39,12 @@ def transcribe_audio_with_timestamps(audio_file_path):
         model = whisper.load_model("tiny", device="cpu")
         result = model.transcribe(audio_file_path, word_timestamps=True)
         transcription = result['text'].strip()
-
         return transcription, result['segments']
     except Exception as e:
         log_error(f"Error transcribing audio: {e}")
         return None, None
 
-# Step 3: Correct transcription with GPT-4
+# Step 3: Correct transcription with Azure API
 def correct_transcription_with_gpt4(transcription, max_retries=3):
     prompt = f"Correct the following text for punctuation, spelling, and grammar without changing its meaning:\n\n{transcription}"
 
@@ -85,20 +84,15 @@ def generate_adjusted_audio_with_timestamps(text, segments, original_audio_path)
         output_audio_path = os.path.join(tempfile.gettempdir(), "generated_audio.wav")
         tts.save(output_audio_path)
 
-        # Align the audio based on Whisper's timestamps and silence
-        silence_segments = detect_silences(original_audio_path)
+        # Load the generated TTS audio as an AudioSegment
         tts_audio = AudioSegment.from_wav(output_audio_path)
-        aligned_audio = tts_audio
+        aligned_audio = AudioSegment.silent(duration=0)
 
+        # Align the audio based on Whisper's timestamps
         for seg in segments:
             start_time = seg['start'] * 1000  # Convert to milliseconds
             end_time = seg['end'] * 1000
-
-            if silence_segments:
-                for start, stop in silence_segments:
-                    silence_duration = stop - start
-                    silent_segment = AudioSegment.silent(duration=silence_duration)
-                    aligned_audio = aligned_audio[:start_time] + silent_segment + aligned_audio[end_time:]
+            aligned_audio += tts_audio[start_time:end_time] + AudioSegment.silent(duration=100)  # Short silence
 
         final_output_audio_path = os.path.join(tempfile.gettempdir(), "adjusted_audio_with_timestamps.wav")
         aligned_audio.export(final_output_audio_path, format="wav")
