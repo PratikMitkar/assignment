@@ -4,7 +4,6 @@ import requests
 import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
-from gtts import gTTS  # Import gTTS
 import streamlit as st
 from tempfile import NamedTemporaryFile
 import time
