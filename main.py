@@ -12,7 +12,7 @@ api_key = "22ec84421ec24230a3638d1b51e3a7dc"
 endpoint = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"
 
 # Streamlit app title
-st.title("Video to Adjusted Audio Sync with Silence Handling")
+st.title("🎥 Video to Adjusted Audio Sync with Silence Handling")
 
 # Define a base output folder path
 base_output_folder = "output"
@@ -141,35 +141,35 @@ def main():
             f.write(video_file.read())
 
         # Step 1: Extract audio
-        status_label.text("Extracting audio from video...")
+        status_label.text("🔊 Extracting audio from video...")
         output_audio_path = extract_audio_from_video(video_path)
         progress.progress(20)
 
         if output_audio_path:
             # Step 2: Transcribe audio
-            status_label.text("Transcribing audio...")
+            status_label.text("📝 Transcribing audio...")
             transcription = transcribe_audio(output_audio_path)
             progress.progress(40)
 
             if transcription:
                 # Step 3: Correct transcription
-                status_label.text("Correcting transcription with GPT-4...")
+                status_label.text("✍️ Correcting transcription with GPT-4...")
                 corrected_transcription = correct_transcription_with_gpt4(transcription)
                 progress.progress(60)
 
                 if corrected_transcription:
                     # Step 4: Generate adjusted audio with silences
-                    status_label.text("Generating adjusted audio with silences...")
+                    status_label.text("🎶 Generating adjusted audio with silences...")
                     generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription, output_audio_path)
                     progress.progress(80)
 
                     if generated_audio_path:
                         # Step 5: Sync audio and attach to video
-                        status_label.text("Attaching adjusted audio to video...")
+                        status_label.text("📽️ Attaching adjusted audio to video...")
                         final_video_path = attach_audio_to_video(video_path, generated_audio_path)
 
                         if final_video_path:
-                            st.success("Video processing complete!")
+                            st.success("✅ Video processing complete!")
                             st.video(final_video_path)
                         else:
                             log_error("Final video generation failed.")
