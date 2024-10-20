@@ -36,20 +36,22 @@ def extract_audio_from_video(video_path, output_audio_filename="audio.mp3"):
         log_error(f"Error extracting audio: {e}")
         return None
 
-# Step 2: Transcribe audio with Whisper
-def transcribe_audio(audio_file_path):
+# Step 2: Transcribe audio with Whisper and get timestamps
+def transcribe_audio_with_timestamps(audio_file_path):
     try:
         model = whisper.load_model("tiny", device="cpu")
-        result = model.transcribe(audio_file_path)
+        result = model.transcribe(audio_file_path, word_timestamps=True)
         transcription = result['text'].strip()
 
+        # Save transcription and timestamps
         transcription_file = os.path.join(temp_dir.name, 'transcription.txt')
         with open(transcription_file, 'w', encoding='utf-8') as f:
             f.write(transcription)
-        return transcription_file
+
+        return transcription_file, result['segments']
     except Exception as e:
         log_error(f"Error transcribing audio: {e}")
-        return None
+        return None, None
 
 # Step 4: Correct transcription with GPT-4
 def correct_transcription_with_gpt4(transcription_file, max_retries=3):
@@ -97,48 +99,40 @@ def correct_transcription_with_gpt4(transcription_file, max_retries=3):
         log_error(f"Error in GPT-4 correction: {e}")
         return None
 
-# Detect silences in the original audio
-def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
-    try:
-        audio = AudioSegment.from_mp3(audio_path)
-        silence_segments = silence.detect_silence(audio, min_silence_len=min_silence_len, silence_thresh=silence_thresh)
-        return silence_segments
-    except Exception as e:
-        log_error(f"Error detecting silences: {e}")
-        return None
-
-# Step 5: Generate adjusted audio and incorporate silences
-def generate_adjusted_audio_with_silences(corrected_transcription_file, original_audio_path, speech_rate=1.0):
+# Step 5: Generate adjusted audio with silence handling and timestamps
+def generate_adjusted_audio_with_timestamps(corrected_transcription_file, segments, original_audio_path):
     try:
         with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        # Generate TTS audio
+        # Generate TTS audio using gTTS
         tts = gTTS(text)
         output_audio_path = os.path.join(temp_dir.name, "generated_audio.wav")
         tts.save(output_audio_path)
 
-        # Detect silences from the original audio
+        # Align the audio based on the timestamps from Whisper's result
         silence_segments = detect_silences(original_audio_path)
 
-        if silence_segments:
-            tts_audio = AudioSegment.from_wav(output_audio_path)
+        tts_audio = AudioSegment.from_wav(output_audio_path)
+        aligned_audio = tts_audio
 
-            # Insert silences into the generated audio
-            for start, stop in silence_segments:
-                silence_duration = stop - start
-                silent_segment = AudioSegment.silent(duration=silence_duration)
-                tts_audio = tts_audio[:start] + silent_segment + tts_audio[start:]
+        # Apply silences from original audio to the synthesized speech based on word-level timestamps
+        for seg in segments:
+            start_time = seg['start'] * 1000  # Convert to milliseconds
+            end_time = seg['end'] * 1000
 
-            # Save the final adjusted audio with silences
-            final_output_audio_path = os.path.join(temp_dir.name, "adjusted_audio_with_silences.wav")
-            tts_audio.export(final_output_audio_path, format="wav")
-            return final_output_audio_path
-        else:
-            return output_audio_path
+            if silence_segments:
+                for start, stop in silence_segments:
+                    silence_duration = stop - start
+                    silent_segment = AudioSegment.silent(duration=silence_duration)
+                    aligned_audio = aligned_audio[:start_time] + silent_segment + aligned_audio[end_time:]
+
+        final_output_audio_path = os.path.join(temp_dir.name, "adjusted_audio_with_timestamps.wav")
+        aligned_audio.export(final_output_audio_path, format="wav")
+        return final_output_audio_path
 
     except Exception as e:
-        log_error(f"Error generating adjusted audio with silences: {e}")
+        log_error(f"Error generating adjusted audio with timestamps: {e}")
         return None
 
 # Step 6: Attach adjusted audio to the video
@@ -176,21 +170,21 @@ def main():
         progress_bar.progress(20)
 
         if output_audio_path:
-            # Step 2: Transcribe audio
+            # Step 2: Transcribe audio with timestamps
             with st.spinner('Transcribing audio...'):
-                transcription_file = transcribe_audio(output_audio_path)
+                transcription_file, segments = transcribe_audio_with_timestamps(output_audio_path)
             progress_bar.progress(40)
 
-            if transcription_file:
+            if transcription_file and segments:
                 # Step 4: Correct transcription
                 with st.spinner('Correcting transcription with GPT-4...'):
                     corrected_transcription_file = correct_transcription_with_gpt4(transcription_file)
                 progress_bar.progress(60)
 
                 if corrected_transcription_file:
-                    # Step 5: Generate adjusted audio with silences
-                    with st.spinner('Generating adjusted audio with silences...'):
-                        generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path)
+                    # Step 5: Generate adjusted audio with silences and timestamps
+                    with st.spinner('Generating adjusted audio with timestamps...'):
+                        generated_audio_path = generate_adjusted_audio_with_timestamps(corrected_transcription_file, segments, output_audio_path)
                     progress_bar.progress(80)
 
                     if generated_audio_path:
