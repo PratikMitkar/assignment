@@ -40,7 +40,7 @@ def extract_audio_from_video(video_path, output_audio_folder=base_output_folder,
 # Step 2: Transcribe audio with Whisper
 def transcribe_audio(audio_file_path, output_folder=base_output_folder):
     try:
-        model = whisper.load_model("base")
+        model = whisper.load_model("tiny")
         result = model.transcribe(audio_file_path)
         transcription = result['text'].strip()
 
