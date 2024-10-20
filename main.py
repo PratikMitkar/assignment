@@ -6,10 +6,11 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
 import pyttsx3
 import streamlit as st
+import re
 import time
 
 # API configurations (replace with your own API key)
-api_key = "YOUR_API_KEY"
+api_key = "22ec84421ec24230a3638d1b51e3a7dc"
 endpoint = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"
 
 # Streamlit app title
@@ -102,9 +103,6 @@ def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
     try:
         audio = AudioSegment.from_mp3(audio_path)
         silence_segments = silence.detect_silence(audio, min_silence_len=min_silence_len, silence_thresh=silence_thresh)
-
-        # Convert the silence start and end times into milliseconds
-        silence_segments = [(start, stop) for start, stop in silence_segments]
         return silence_segments
     except Exception as e:
         log_error(f"Error detecting silences: {e}")
@@ -147,42 +145,13 @@ def generate_adjusted_audio_with_silences(corrected_transcription_file, original
         log_error(f"Error generating adjusted audio with silences: {e}")
         return None
 
-# Step 6: Adjust audio duration to sync with the video
-def adjust_audio_duration_with_speech_rate(audio_clip, video_duration):
-    audio_duration = len(audio_clip) / 1000  # Audio duration in seconds
-    duration_difference = video_duration - audio_duration
-
-    if abs(duration_difference) < 0.1:  # If the difference is minimal (e.g., < 100 ms), add silence
-        if duration_difference > 0:
-            silence_clip = AudioSegment.silent(duration=duration_difference * 1000)
-            audio_clip = audio_clip + silence_clip
-        elif duration_difference < 0:
-            audio_clip = audio_clip[:int(video_duration * 1000)]
-    else:
-        target_speed = audio_duration / video_duration
-        audio_clip = audio_clip.speedup(playback_speed=target_speed)
-
-    return audio_clip
-
-# Step 7: Attach adjusted audio to the video
+# Step 6: Attach adjusted audio to the video
 def attach_audio_to_video(video_path, adjusted_audio_path, output_folder=base_output_folder):
     try:
         video_clip = VideoFileClip(video_path)
-        audio_clip = AudioFileClip(adjusted_audio_path)
-
-        adjusted_audio_clip = adjust_audio_duration_with_speech_rate(AudioSegment.from_wav(adjusted_audio_path),
-                                                                     video_clip.duration)
-
-        # Export adjusted audio
-        final_adjusted_audio_path = os.path.join(output_folder, "adjusted_audio.wav")
-        adjusted_audio_clip.export(final_adjusted_audio_path, format="wav")
-
-        # Attach the adjusted audio to the video
-        final_video = video_clip.set_audio(AudioFileClip(final_adjusted_audio_path))
-        final_video_path = os.path.join(output_folder, "final_video_with_audio.mp4")
-        final_video.write_videofile(final_video_path, codec="libx264", audio_codec="aac")
-
-        return final_video_path
+        final_adjusted_audio_path = os.path.join(output_folder, "final_video_with_audio.mp4")
+        video_clip.set_audio(AudioFileClip(adjusted_audio_path)).write_videofile(final_adjusted_audio_path, codec="libx264", audio_codec="aac")
+        return final_adjusted_audio_path
     except Exception as e:
         log_error(f"Error attaching audio to video: {e}")
         return None
@@ -192,39 +161,27 @@ def main():
     video_file = st.file_uploader("Upload a video", type=["mp4", "mkv", "avi"])
 
     if st.button("Process Video") and video_file is not None:
-        progress = st.progress(0)
-        status_label = st.empty()  # Create an empty placeholder for status label
-
         video_path = os.path.join(base_output_folder, video_file.name)
         with open(video_path, "wb") as f:
             f.write(video_file.read())
 
         # Step 1: Extract audio
-        status_label.text("Extracting audio from video...")
         output_audio_path = extract_audio_from_video(video_path)
-        progress.progress(20)
 
         if output_audio_path:
             # Step 2: Transcribe audio
-            status_label.text("Transcribing audio...")
             transcription_file = transcribe_audio(output_audio_path)
-            progress.progress(40)
 
             if transcription_file:
                 # Step 4: Correct transcription
-                status_label.text("Correcting transcription with GPT-4...")
                 corrected_transcription_file = correct_transcription_with_gpt4(transcription_file)
-                progress.progress(80)
 
                 if corrected_transcription_file:
                     # Step 5: Generate adjusted audio with silences
-                    status_label.text("Generating adjusted audio with silences...")
                     generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path)
-                    progress.progress(100)
 
                     if generated_audio_path:
                         # Step 6: Sync audio and attach to video
-                        status_label.text("Attaching adjusted audio to video...")
                         final_video_path = attach_audio_to_video(video_path, generated_audio_path)
 
                         if final_video_path:
