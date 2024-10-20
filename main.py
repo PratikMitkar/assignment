@@ -1,11 +1,12 @@
 import os
-import re
 import requests
 import whisper
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 from moviepy.editor import VideoFileClip
+from gtts import gTTS
 import streamlit as st
+import re
 
 # Streamlit Configuration
 st.title("Video to Adjusted Audio Converter")
@@ -15,7 +16,7 @@ st.write("Upload a video file to extract and adjust audio.")
 video_file = st.file_uploader("Choose a video file", type=["mp4"])
 
 # Configuration for API
-API_KEY = "22ec84421ec24230a3638d1b51e3a7dc"  # Replace with your actual API key
+API_KEY = "22ec84421ec24230a3638d1b51e3a7dc"   # Replace with your actual API key
 ENDPOINT = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"  # Replace with your actual endpoint
 
 # Function to extract audio from video
@@ -37,8 +38,8 @@ def extract_audio_from_video(video_path, output_audio_folder="output", output_au
 def process_audio_with_whisper(audio_file_path, output_folder="output"):
     try:
         audio = AudioSegment.from_mp3(audio_file_path)
-        silence_threshold = -50  # dBFS
-        min_silence_duration = 500  # milliseconds
+        silence_threshold = -50  # in dBFS
+        min_silence_duration = 500  # in milliseconds
         silence_intervals = detect_silence(audio, min_silence_len=min_silence_duration, silence_thresh=silence_threshold)
 
         total_duration_seconds = len(audio) / 1000
@@ -50,7 +51,6 @@ def process_audio_with_whisper(audio_file_path, output_folder="output"):
         spoken_minutes = spoken_duration_seconds / 60
         wpm = word_count / spoken_minutes if spoken_minutes > 0 else 0
 
-        # Save transcription and analysis results
         if not os.path.exists(output_folder):
             os.makedirs(output_folder)
         transcription_file = os.path.join(output_folder, 'transcription.txt')
@@ -121,43 +121,34 @@ def correct_transcription_with_gpt4(transcription_file, output_folder="output", 
         st.error(f"An error occurred during GPT-4 processing: {str(e)}")
         return None
 
-# Function to generate adjusted audio
-def generate_adjusted_audio(analysis_file, corrected_transcription_file, original_video_path):
+# Function to generate adjusted audio using gTTS
+def generate_adjusted_audio(corrected_transcription_file, target_wpm, output_folder="output"):
     try:
-        with open(analysis_file, 'r') as f:
-            analysis_output = f.read()
-
-        # Extract required values from the analysis output
-        word_count = int(re.search(r'Word count: (\d+)', analysis_output).group(1))
-        spoken_duration = float(re.search(r'Spoken duration \(minutes\): ([\d.]+)', analysis_output).group(1))
-        target_wpm = float(re.search(r'Words per minute \(WPM\): ([\d.]+)', analysis_output).group(1))
-
         with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        # Generate adjusted audio from corrected transcription
+        # Generate audio chunks using gTTS
         speech_rate = target_wpm / 170  # Adjust rate based on target WPM
+        combined_audio = AudioSegment.empty()
         chunk_size = 1000  # Number of characters per chunk
         chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
 
-        combined_audio = AudioSegment.empty()
         for i, chunk in enumerate(chunks):
             try:
-                chunk_audio = AudioSegment.silent(duration=1000)  # Replace with actual TTS logic
+                # Generate audio using gTTS
+                tts = gTTS(text=chunk, lang='en', slow=False)
+                audio_file_path = os.path.join(output_folder, f'chunk_{i}.mp3')
+                tts.save(audio_file_path)
+
+                # Load the generated audio
+                chunk_audio = AudioSegment.from_mp3(audio_file_path)
                 combined_audio += chunk_audio
             except Exception as e:
                 st.error(f"Error processing chunk {i}: {str(e)}")
 
-        output_path = os.path.join("output", "output_adjusted.wav")
+        output_path = os.path.join(output_folder, "output_adjusted.wav")
         combined_audio.export(output_path, format="wav")
-
-        if original_video_path:
-            video_clip = VideoFileClip(original_video_path)
-            audio_clip = AudioSegment.from_wav(output_path)
-            final_video = video_clip.set_audio(audio_clip)
-            final_video_path = os.path.join("output", "final_video_with_audio.mp4")
-            final_video.write_videofile(final_video_path, codec="libx264", audio_codec="aac")
-            st.success(f"Final video with adjusted audio saved as '{final_video_path}'")
+        st.success(f"Adjusted audio saved as '{output_path}'")
 
     except Exception as e:
         st.error(f"An error occurred during audio generation: {str(e)}")
@@ -182,7 +173,10 @@ def process_files(video_file):
 
                 if corrected_transcription_file:
                     st.write("Generating adjusted audio...")
-                    generate_adjusted_audio(analysis_file, corrected_transcription_file, video_path)
+                    with open(analysis_file, 'r') as f:
+                        analysis_output = f.read()
+                    target_wpm = float(re.search(r'Words per minute \(WPM\): ([\d.]+)', analysis_output).group(1))
+                    generate_adjusted_audio(corrected_transcription_file, target_wpm)
 
 # Run the processing function on button click
 if st.button("Start Processing"):
