@@ -7,3 +7,6 @@ moviepy
 pydub
 pyttsx3
 gTTS
+torch 
+torchvision 
+torchaudio
