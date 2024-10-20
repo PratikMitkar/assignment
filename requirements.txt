@@ -1,11 +1,7 @@
-os-sys
-whisper
+streamlit
+git+https://github.com/openai/whisper.git
 requests
-jsonlib
 moviepy
 pydub
 gtts
 pyttsx3
-streamlit
-re
-time
