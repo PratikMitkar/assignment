@@ -165,26 +165,42 @@ def main():
         with open(video_path, "wb") as f:
             f.write(video_file.read())
 
+        # Initialize the progress bar
+        progress = st.progress(0)
+        status_text = st.text("Starting video processing...")
+
         # Step 1: Extract audio
+        progress.progress(10)
+        status_text.text("Step 1: Extracting audio...")
         output_audio_path = extract_audio_from_video(video_path)
 
         if output_audio_path:
             # Step 2: Transcribe audio
+            progress.progress(30)
+            status_text.text("Step 2: Transcribing audio...")
             transcription_file = transcribe_audio(output_audio_path)
 
             if transcription_file:
                 # Step 4: Correct transcription
+                progress.progress(50)
+                status_text.text("Step 3: Correcting transcription...")
                 corrected_transcription_file = correct_transcription_with_gpt4(transcription_file)
 
                 if corrected_transcription_file:
                     # Step 5: Generate adjusted audio with silences
+                    progress.progress(70)
+                    status_text.text("Step 4: Generating adjusted audio with silences...")
                     generated_audio_path = generate_adjusted_audio_with_silences(corrected_transcription_file, output_audio_path)
 
                     if generated_audio_path:
                         # Step 6: Sync audio and attach to video
+                        progress.progress(90)
+                        status_text.text("Step 5: Attaching audio to video...")
                         final_video_path = attach_audio_to_video(video_path, generated_audio_path)
 
                         if final_video_path:
+                            progress.progress(100)
+                            status_text.text("Video processing complete!")
                             st.success("Video processing complete!")
                             st.video(final_video_path)
 
