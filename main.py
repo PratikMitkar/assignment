@@ -5,7 +5,6 @@ import json
 from moviepy.editor import VideoFileClip, AudioFileClip
 from pydub import AudioSegment, silence
 import streamlit as st
-import time
 
 # API configurations
 api_key = "22ec84421ec24230a3638d1b51e3a7dc"
@@ -189,6 +188,16 @@ def main():
                         if final_video_path:
                             st.success("Video processing complete!")
                             st.video(final_video_path)
+                        else:
+                            log_error("Final video generation failed.")
+                    else:
+                        log_error("Adjusted audio generation failed.")
+                else:
+                    log_error("Transcription correction failed.")
+            else:
+                log_error("Audio transcription failed.")
+        else:
+            log_error("Audio extraction failed.")
 
 if __name__ == "__main__":
     main()
