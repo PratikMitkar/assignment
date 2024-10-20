@@ -14,3 +14,4 @@ torchaudio
 numba
 setuptools
 wheel
+numba==0.47.0
