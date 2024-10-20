@@ -90,6 +90,10 @@ def generate_adjusted_audio(corrected_transcription):
 # Streamlit application
 st.title("Video to Adjusted Audio Converter")
 
+# Create temp directory if it doesn't exist
+if not os.path.exists("temp"):
+    os.makedirs("temp")
+
 # Initialize paths
 video_path = None
 audio_path = None
