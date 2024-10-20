@@ -4,4 +4,5 @@ requests
 moviepy
 pydub
 gtts
+coqui-tts 
 TTS
