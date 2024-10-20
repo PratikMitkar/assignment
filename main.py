@@ -37,6 +37,10 @@ def extract_audio_from_video(video_path):
 # Step 2: Transcribe audio with Whisper
 def transcribe_audio(audio_file_path):
     try:
+        # Load audio and get its duration
+        audio = AudioSegment.from_mp3(audio_file_path)
+        original_duration = len(audio) / 1000  # duration in seconds
+        
         model = whisper.load_model("base")
         result = model.transcribe(audio_file_path)
         transcription = result['text'].strip()
@@ -45,7 +49,8 @@ def transcribe_audio(audio_file_path):
         transcription_file = os.path.join(base_output_folder, 'transcription.txt')
         with open(transcription_file, 'w', encoding='utf-8') as f:
             f.write(transcription)
-        return transcription_file, result['duration']  # Return duration as well
+        
+        return transcription_file, original_duration  # Return transcription file and duration
     except Exception as e:
         log_error(f"Error transcribing audio: {e}")
         return None, None
@@ -102,41 +107,31 @@ def generate_adjusted_audio_with_silences(corrected_transcription_file, original
         with open(corrected_transcription_file, 'r', encoding='utf-8') as f:
             text = f.read()
 
-        # Count words in the transcription
-        word_count = len(text.split())
-        
-        # Calculate words per second (WPS)
-        wps = word_count / original_duration if original_duration > 0 else 0
-        st.write(f"Words per second: {wps}")
-
-        # Calculate speech rate (words per minute) for gTTS
-        # Adjust this factor as necessary
-        speech_rate = 150 + (wps * 60)  # Adjusting based on WPS
-        st.write(f"Speech rate for gTTS: {speech_rate}")
-
         # Use gTTS for generating audio from text
-        tts = gTTS(text, lang='en', slow=False)  # `slow` parameter is for speed
+        tts = gTTS(text, lang='en')
         tts_output_path = os.path.join(base_output_folder, "generated_audio.mp3")
         tts.save(tts_output_path)
 
         # Detect silences from the original audio
         silence_segments = detect_silences(original_audio_path)
 
-        if silence_segments:
-            generated_audio = AudioSegment.from_mp3(tts_output_path)
+        generated_audio = AudioSegment.from_mp3(tts_output_path)
 
-            # Insert silences into the generated audio
-            for start, stop in silence_segments:
-                silence_duration = stop - start
-                silent_segment = AudioSegment.silent(duration=silence_duration)
-                generated_audio = generated_audio[:start] + silent_segment + generated_audio[start:]
+        # Adjust playback speed based on original duration and text length
+        words_count = len(text.split())
+        playback_speed = original_duration / (words_count / 2.0)  # Adjust speed per your requirements
+        generated_audio = generated_audio.speedup(playback_speed)
 
-            # Save the final adjusted audio with silences
-            final_output_audio_path = os.path.join(base_output_folder, "adjusted_audio_with_silences.mp3")
-            generated_audio.export(final_output_audio_path, format="mp3")
-            return final_output_audio_path
-        else:
-            return tts_output_path
+        # Insert silences into the generated audio
+        for start, stop in silence_segments:
+            silence_duration = stop - start
+            silent_segment = AudioSegment.silent(duration=silence_duration)
+            generated_audio = generated_audio[:start] + silent_segment + generated_audio[start:]
+
+        # Save the final adjusted audio with silences
+        final_output_audio_path = os.path.join(base_output_folder, "adjusted_audio_with_silences.mp3")
+        generated_audio.export(final_output_audio_path, format="mp3")
+        return final_output_audio_path
     except Exception as e:
         log_error(f"Error generating adjusted audio with silences: {e}")
         return None
