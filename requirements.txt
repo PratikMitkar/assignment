@@ -11,3 +11,6 @@ llvmlite
 torch
 torchvision
 torchaudio
+numba
+setuptools
+wheel
