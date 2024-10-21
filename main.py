@@ -170,7 +170,14 @@ def main():
 
                         if final_video_path:
                             st.success("✅ Video processing complete!")
-                            st.video(final_video_path)
+                            # Create two columns to display videos side by side
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.subheader("Original Video")
+                                st.video(video_path)
+                            with col2:
+                                st.subheader("Generated Video")
+                                st.video(final_video_path)
                         else:
                             log_error("Final video generation failed.")
                     else:
