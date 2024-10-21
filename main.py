@@ -83,7 +83,7 @@ def detect_silences(audio_path, silence_thresh=-50, min_silence_len=500):
         log_error(f"Error detecting silences: {e}")
         return []
 
-# Step 4: Generate adjusted audio and incorporate silences
+# Step 4: Generate adjusted audio and incorporate silences while maintaining duration
 def generate_adjusted_audio_with_silences(corrected_transcription, original_audio_path):
     try:
         # Use gTTS for generating audio from text
@@ -91,17 +91,39 @@ def generate_adjusted_audio_with_silences(corrected_transcription, original_audi
         tts_output_path = os.path.join(base_output_folder, "generated_audio.mp3")
         tts.save(tts_output_path)
 
+        # Load the original audio to calculate its duration
+        original_audio = AudioSegment.from_mp3(original_audio_path)
+        original_duration = len(original_audio)  # in milliseconds
+
         # Detect silences from the original audio
         silence_segments = detect_silences(original_audio_path)
 
         if silence_segments:
             generated_audio = AudioSegment.from_mp3(tts_output_path)
+            generated_duration = len(generated_audio)
 
-            # Insert silences into the generated audio
-            for start, stop in silence_segments:
-                silence_duration = stop - start
-                silent_segment = AudioSegment.silent(duration=silence_duration)
-                generated_audio = generated_audio[:start] + silent_segment + generated_audio[start:]
+            # Calculate time differences to maintain the same overall duration
+            duration_difference = original_duration - generated_duration
+            silence_count = len(silence_segments)
+            
+            if duration_difference > 0 and silence_count > 0:
+                # Distribute additional silence proportionally across existing silences
+                additional_silence_per_segment = duration_difference // silence_count
+
+                # Insert silences into the generated audio
+                for i, (start, stop) in enumerate(silence_segments):
+                    silence_duration = (stop - start) + additional_silence_per_segment
+                    silent_segment = AudioSegment.silent(duration=silence_duration)
+                    generated_audio = generated_audio[:start] + silent_segment + generated_audio[start:]
+
+            # Ensure the final duration matches the original duration
+            if len(generated_audio) < original_duration:
+                # Add silence at the end if the generated audio is shorter
+                silence_to_add = AudioSegment.silent(duration=(original_duration - len(generated_audio)))
+                generated_audio = generated_audio + silence_to_add
+            elif len(generated_audio) > original_duration:
+                # Trim the audio if it exceeds the original duration (for safety)
+                generated_audio = generated_audio[:original_duration]
 
             # Save the final adjusted audio with silences
             final_output_audio_path = os.path.join(base_output_folder, "adjusted_audio_with_silences.mp3")
