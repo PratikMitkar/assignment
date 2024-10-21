@@ -10,3 +10,5 @@ git+https://github.com/openai/whisper.git
 whisper
 opencv-python 
 pyttsx3
+streamlit-tts 
+TTS
