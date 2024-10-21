@@ -65,6 +65,7 @@ def process_audio_with_whisper_and_pydub(audio_file_path):
         return None, None
 
 # Function to correct transcription with GPT-4
+# Function to correct transcription with GPT-4
 def correct_transcription_with_gpt4(transcription_file):
     try:
         with open(transcription_file, 'r', encoding='utf-8') as file:
@@ -76,6 +77,7 @@ def correct_transcription_with_gpt4(transcription_file):
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {API_KEY}",
+            "Ocp-Apim-Subscription-Key": API_KEY,  # Add this line for Azure
         }
 
         data = {
