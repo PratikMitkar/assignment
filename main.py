@@ -66,9 +66,20 @@ def correct_transcription_with_gpt4(transcription):
         }
 
         response = requests.post(endpoint, headers=headers, json=data)
-        response_data = response.json()
-        gpt4_response = response_data['choices'][0]['message']['content'].strip()
-        return gpt4_response
+
+        if response.status_code == 200:
+            response_data = response.json()
+            # Check if 'choices' key exists and contains a valid response
+            if 'choices' in response_data and len(response_data['choices']) > 0:
+                gpt4_response = response_data['choices'][0]['message']['content'].strip()
+                return gpt4_response
+            else:
+                log_error("No valid 'choices' found in GPT-4 response.")
+                return None
+        else:
+            log_error(f"GPT-4 API request failed with status code: {response.status_code}")
+            return None
+
     except Exception as e:
         log_error(f"Error in GPT-4 correction: {e}")
         return None
