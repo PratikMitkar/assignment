@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 from TTS.api import TTS  # Import the TTS API
 
 # Constants for API access
-API_KEY = "22ec84421ec24230a3638d1b51e3a7dc"
+API_KEY = "22ec84421ec24230a3638d1b51e3a7dc"  
 ENDPOINT = "https://internshala.openai.azure.com/openai/deployments/gpt-4o/chat/completions?api-version=2024-08-01-preview"
 
 # Function to extract audio from video
